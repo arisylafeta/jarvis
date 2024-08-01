@@ -17,15 +17,20 @@ from gtts import gTTS
 from pygame import mixer
 from io import BytesIO
 
+#------------------------------------------------------------------------------------------------
 
+#API keys are stored in a .env file in the same directory as the script
 load_dotenv()
 groq_client = Groq(api_key=os.getenv('GROQ_API_KEY'))
-
 openai_client = None
 
+#If OpenAI API key is set, use OpenAI API
 if os.getenv('OPENAI_API_KEY'):
     openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
+#------------------------------------------------------------------------------------------------
+
+#System prompt and wake word
 wake_word = 'jarvis'
 sys_msg = (
     'You are a multi-model AI voice assistant. Your user may or may not have attached a photo for context '
@@ -36,9 +41,12 @@ sys_msg = (
     'Use all of the context of this conversation so your response is relevant to the conversation. Make '
     'your responses clear and concise, avoiding any verbosity.'
 )
-
 convo = [{"role": "system", "content": sys_msg}]
 
+#------------------------------------------------------------------------------------------------
+#Funcion Definitions
+
+#Whisper model for transcribing audio
 whisper_size = 'base'
 whisper_model = WhisperModel(
     model_size_or_path=whisper_size,
@@ -46,9 +54,7 @@ whisper_model = WhisperModel(
     compute_type='int8'
 )
 
-r = sr.Recognizer()
-source = sr.Microphone()
-
+#Main AI assistant function
 def groq_prompt(prompt, img_context):
     if img_context:
         prompt = f'USER PROMPT: {prompt}\n\n  IMAGE CONTEXT: {img_context}'
@@ -59,7 +65,7 @@ def groq_prompt(prompt, img_context):
 
     return response.content
     
-
+#Function to determine which function to call based on user prompt
 def function_call(prompt):
     sys_msg = (
         'You are an AI function calling model. You will determine whether extracting the users clipboard content,'
@@ -76,12 +82,14 @@ def function_call(prompt):
     response = chat_completion.choices[0].message
     return response.content
 
+#Function to take a screenshot
 def take_screenshot():
     path = 'screenshot.png'
     screenshot = ImageGrab.grab()
     rgb_screenshot = screenshot.convert('RGB')
     rgb_screenshot.save(path, quality=15)
 
+#Function to capture webcam image
 def capture_webcam():
     web_cam = cv2.VideoCapture(0)
     if not web_cam.isOpened():
@@ -96,12 +104,13 @@ def capture_webcam():
 
     path = 'webcam_capture.png'
     if cv2.imwrite(path, frame):
-        print(f"Image saved to {path}")
+        print(f"Image saved to  {path}")
     else:
         print("Error: Could not write image.")
 
     web_cam.release()
 
+#Function to extract clipboard content
 def extract_clipboard():
     clipboard_content = pyperclip.paste()
     if isinstance(clipboard_content, str):
@@ -110,11 +119,12 @@ def extract_clipboard():
         print('Could not extract clipboard content.')
         return None
     
-
+#Function to encode image to base64
 def encode_image(image_path):
     with open(image_path, "rb") as image_file:
         return base64.b64encode(image_file.read()).decode('utf-8')
 
+#OpenAI Vision model for image analysis
 def openai_vision_prompt(prompt, photo_path):
     base64_image = encode_image(photo_path)
     prompt=(
@@ -148,6 +158,7 @@ def openai_vision_prompt(prompt, photo_path):
     print(response.choices[0].message.content)
     return response.choices[0].message.content
 
+#Ollama Vision model for image analysis
 def ollama_vision_prompt(prompt, photo_path):
     prompt=(
             'You are the vision analysis AI that provides semantic meaning from images to provide context '
@@ -163,7 +174,7 @@ def ollama_vision_prompt(prompt, photo_path):
     )
     return response['response']
 
-
+#Function to speak text using OpenAI API
 def openai_speak(text):
     player_stream = pyaudio.PyAudio().open(format=pyaudio.paInt16, channels=1, rate=24000, output=True)
     stream_start = False
@@ -183,6 +194,7 @@ def openai_speak(text):
                         player_stream.write(chunk)
                         stream_start = True
 
+#Function to speak text using gTTS
 def gtts_speak(text):
     mixer.init()
     mp3_fp = BytesIO()
@@ -198,11 +210,16 @@ def gtts_speak(text):
     mixer.music.stop()
     mixer.quit()
 
+#Function to transcribe audio to text
 def wav_to_text(audio_path):
     segments, _ = whisper_model.transcribe(audio_path)
     text = ' '.join([seg.text for seg in segments])
     return text
 
+#------------------------------------------------------------------------------------------------
+#Main Loop Functions
+
+#Callback function for listening to audio and responding to user prompts
 def callback(recognizer, audio):
     prompt_audio_path = 'prompt.wav'
     print('Listening...')
@@ -246,6 +263,8 @@ def callback(recognizer, audio):
         else:
             gtts_speak(response)
 
+
+#Function to start listening to audio
 def start_listening(source, r):
     with source as source:
         r.adjust_for_ambient_noise(source, duration=2)
@@ -255,6 +274,7 @@ def start_listening(source, r):
     while True:
         time.sleep(.3)
 
+#Function to extract prompt from transcribed text
 def extract_prompt(trascribed_text, wake_word):
     pattern = rf'\b{re.escape(wake_word)}[\s,.?!]*([A-Za-z0-9].*)'
     match = re.search(pattern, trascribed_text, re.IGNORECASE)
@@ -265,5 +285,10 @@ def extract_prompt(trascribed_text, wake_word):
     else:
         return None
 
-start_listening(source, r)
+
+#Main function
+if __name__ == '__main__':
+    r = sr.Recognizer()
+    source = sr.Microphone()
+    start_listening(source, r)
 
