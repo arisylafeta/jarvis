@@ -1,0 +1,5 @@
+# Exclude venv folder
+Jarvis/
+
+# Exclude .env file
+.env
